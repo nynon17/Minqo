@@ -1,11 +1,11 @@
-# Minka
+# Minqo
 
 A modern web application for designing a simple 3D room directly in the browser.  
 The project focuses on intuitive room planning, adjusting room dimensions, choosing furniture, changing wall colors, and viewing the scene from multiple angles.
 
 ## Project Overview
 
-Minka is an interactive interior planning tool where users can:
+Minqo is an interactive interior planning tool where users can:
 - set room dimensions
 - change wall colors
 - choose furniture

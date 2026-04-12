@@ -9,7 +9,7 @@ const TopNav = () => {
           <Home className="w-4 h-4 text-primary-foreground" />
         </div>
         <span className="font-display text-base sm:text-lg font-semibold tracking-tight text-foreground">
-          Minka
+          Minqo
         </span>
         <span className="hidden md:inline text-xs text-muted-foreground ml-1 font-medium tracking-wide uppercase">
           Room Planner

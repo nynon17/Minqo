@@ -1,11 +1,11 @@
-# Room Planner
+# Minka
 
 A modern web application for designing a simple 3D room directly in the browser.  
 The project focuses on intuitive room planning, adjusting room dimensions, choosing furniture, changing wall colors, and viewing the scene from multiple angles.
 
 ## Project Overview
 
-Room Planner is an interactive interior planning tool where users can:
+Minka is an interactive interior planning tool where users can:
 - set room dimensions
 - change wall colors
 - choose furniture

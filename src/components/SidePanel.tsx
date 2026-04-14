@@ -18,11 +18,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
+  getFurnitureDisplayNames,
+  getFurnitureTypeLabel,
+} from "@/features/room-planner/furnitureNaming";
+import {
   Dimensions,
   FurnitureType,
   RoomPlannerController,
   ViewMode,
-  WallId,
 } from "@/features/room-planner/types";
 
 type SidePanelProps = {
@@ -41,30 +44,17 @@ const VIEW_OPTIONS: Array<{ id: ViewMode; label: string; description: string }> 
   { id: "top", label: "Top", description: "Bird's-eye plan view" },
 ];
 
-const WALL_ORDER: WallId[] = ["front", "back", "left", "right"];
-
-const COLOR_PRESETS = [
-  "#f5eee5",
-  "#efe7dc",
-  "#e2d9cb",
-  "#d6cab9",
-  "#d5dfd2",
-  "#c9baa5",
-  "#d9cdc0",
-  "#f2e9dc",
-];
 
 const FURNITURE_ACTIONS: Array<{
-  label: string;
   type: FurnitureType;
   icon: ComponentType<{ className?: string }>;
 }> = [
-  { label: "Chair", type: "chair", icon: Armchair },
-  { label: "Table", type: "table", icon: Square },
-  { label: "Sofa", type: "sofa", icon: Sofa },
-  { label: "Lamp", type: "lamp", icon: Lamp },
-  { label: "Bed", type: "bed", icon: BedDouble },
-  { label: "Plant", type: "plant", icon: Flower2 },
+  { type: "chair", icon: Armchair },
+  { type: "table", icon: Square },
+  { type: "sofa", icon: Sofa },
+  { type: "lamp", icon: Lamp },
+  { type: "bed", icon: BedDouble },
+  { type: "plant", icon: Flower2 },
 ];
 
 const FURNITURE_HEIGHT_STEP = 0.1;
@@ -76,13 +66,9 @@ const toDimensionDrafts = (room: Dimensions): Record<keyof Dimensions, string> =
 });
 
 const SidePanel = ({ planner }: SidePanelProps) => {
-  const [selectedWall, setSelectedWall] = useState<WallId>("front");
   const {
-    state: { room, colors, viewMode, furniture, hiddenWalls },
+    state: { room, viewMode, furniture, hiddenWalls },
     setDimension,
-    setWallColor,
-    setAllWallsColor,
-    setFloorColor,
     setViewMode,
     setFurniturePosition,
     removeFurniture,
@@ -91,12 +77,7 @@ const SidePanel = ({ planner }: SidePanelProps) => {
   } = planner;
 
   const hiddenWallText = hiddenWalls.length > 0 ? hiddenWalls.join(", ") : "none";
-  const allWallsColor =
-    colors.walls.front === colors.walls.back &&
-    colors.walls.front === colors.walls.left &&
-    colors.walls.front === colors.walls.right
-      ? colors.walls.front
-      : colors.walls[selectedWall];
+  const furnitureDisplayNames = getFurnitureDisplayNames(furniture);
   const [activeDimension, setActiveDimension] = useState<keyof Dimensions | null>(null);
   const [dimensionDrafts, setDimensionDrafts] = useState<Record<keyof Dimensions, string>>(() =>
     toDimensionDrafts(room),
@@ -151,30 +132,18 @@ const SidePanel = ({ planner }: SidePanelProps) => {
   return (
     <div className="w-full max-w-full lg:w-[clamp(260px,30vw,360px)] lg:min-w-[260px] lg:max-w-[380px] lg:shrink-0 border-t lg:border-t-0 lg:border-l bg-card flex flex-col overflow-hidden h-[46vh] md:h-[42vh] lg:h-full min-h-[260px]">
       <Tabs defaultValue="dimensions" className="flex flex-col flex-1 min-h-0 overflow-hidden">
-        <TabsList className="grid grid-cols-4 mx-3 mt-3 bg-muted/60 h-10 rounded-lg">
+        <TabsList className="grid grid-cols-2 mx-3 mt-3 bg-muted/60 h-11 rounded-lg">
           <TabsTrigger
             value="dimensions"
-            className="text-xs data-[state=active]:bg-card data-[state=active]:shadow-soft rounded-md"
+            className="h-full w-full px-0 text-xs data-[state=active]:bg-card data-[state=active]:shadow-soft rounded-md"
           >
             <Ruler className="w-3.5 h-3.5" />
           </TabsTrigger>
           <TabsTrigger
             value="furniture"
-            className="text-xs data-[state=active]:bg-card data-[state=active]:shadow-soft rounded-md"
+            className="h-full w-full px-0 text-xs data-[state=active]:bg-card data-[state=active]:shadow-soft rounded-md"
           >
             <Sofa className="w-3.5 h-3.5" />
-          </TabsTrigger>
-          <TabsTrigger
-            value="colors"
-            className="text-xs data-[state=active]:bg-card data-[state=active]:shadow-soft rounded-md"
-          >
-            <Palette className="w-3.5 h-3.5" />
-          </TabsTrigger>
-          <TabsTrigger
-            value="view"
-            className="text-xs data-[state=active]:bg-card data-[state=active]:shadow-soft rounded-md"
-          >
-            <Eye className="w-3.5 h-3.5" />
           </TabsTrigger>
         </TabsList>
 
@@ -247,7 +216,9 @@ const SidePanel = ({ planner }: SidePanelProps) => {
                   className="aspect-square rounded-lg bg-muted/40 border border-border/50 flex flex-col items-center justify-center gap-1.5 hover:shadow-soft hover:border-border transition-all"
                 >
                   <item.icon className="w-4 h-4 text-muted-foreground" />
-                  <span className="text-[10px] text-muted-foreground font-medium">{item.label}</span>
+                  <span className="text-[10px] text-muted-foreground font-medium">
+                    {getFurnitureTypeLabel(item.type)}
+                  </span>
                 </button>
               ))}
             </div>
@@ -273,16 +244,14 @@ const SidePanel = ({ planner }: SidePanelProps) => {
               <p className="text-xs text-muted-foreground">No objects yet. Add furniture above.</p>
             ) : (
               <div className="space-y-2">
-                {furniture.map((item, index) => (
+                {furniture.map((item) => (
                   <div
                     key={item.id}
                     className="rounded-lg border border-border/60 bg-muted/20 px-2.5 py-2"
                   >
                     <div className="flex items-center justify-between gap-2">
                       <div>
-                        <p className="text-xs font-medium capitalize text-foreground">
-                          {item.type} {index + 1}
-                        </p>
+                        <p className="text-xs font-medium text-foreground">{furnitureDisplayNames[item.id]}</p>
                         <p className="text-[11px] text-muted-foreground">
                           Height: {item.position[1].toFixed(2)}m
                         </p>
@@ -336,127 +305,7 @@ const SidePanel = ({ planner }: SidePanelProps) => {
           </div>
         </TabsContent>
 
-        <TabsContent value="colors" className="flex-1 overflow-y-auto p-4 space-y-5 mt-0">
-          <div>
-            <h3 className="font-display text-sm font-semibold text-foreground mb-3">Wall Colors</h3>
-            <div className="grid grid-cols-4 gap-2 mb-3">
-              {WALL_ORDER.map((wall) => (
-                <button
-                  key={wall}
-                  onClick={() => setSelectedWall(wall)}
-                  className={`h-8 rounded-md border text-[11px] font-medium capitalize transition-all ${
-                    selectedWall === wall
-                      ? "border-primary/30 bg-primary/5 text-foreground"
-                      : "border-border/60 bg-muted/30 text-muted-foreground hover:border-border"
-                  }`}
-                >
-                  {wall}
-                </button>
-              ))}
-            </div>
 
-            <div className="flex items-center gap-2">
-              <Input
-                type="color"
-                value={colors.walls[selectedWall]}
-                onChange={(event) => setWallColor(selectedWall, event.target.value)}
-                className="h-9 w-16 p-1 bg-muted/40 border-border/60"
-              />
-              <p className="text-xs text-muted-foreground capitalize">
-                Editing <span className="font-medium text-foreground">{selectedWall}</span> wall
-              </p>
-            </div>
-
-            <div className="flex items-center gap-2 mt-3">
-              <Input
-                type="color"
-                value={allWallsColor}
-                onChange={(event) => setAllWallsColor(event.target.value)}
-                className="h-9 w-16 p-1 bg-muted/40 border-border/60"
-              />
-              <p className="text-xs text-muted-foreground">
-                Change <span className="font-medium text-foreground">all walls</span> at once
-              </p>
-            </div>
-
-            <div className="grid grid-cols-4 gap-2.5 mt-3">
-              {COLOR_PRESETS.map((color) => (
-                <button
-                  key={color}
-                  onClick={() => setWallColor(selectedWall, color)}
-                  className="w-12 h-12 rounded-xl border-2 border-border/50 hover:border-border hover:scale-105 transition-all"
-                  style={{ backgroundColor: color }}
-                  aria-label={`Set ${selectedWall} wall color`}
-                />
-              ))}
-            </div>
-
-            <Button
-              variant="outline"
-              size="sm"
-              className="w-full h-9 text-xs bg-muted/30 mt-3"
-              onClick={() => setAllWallsColor(colors.walls[selectedWall])}
-            >
-              Apply selected wall color to all walls
-            </Button>
-          </div>
-
-          <div className="border-t pt-4">
-            <h3 className="font-display text-sm font-semibold text-foreground mb-3">Floor Color</h3>
-            <div className="flex items-center gap-2">
-              <Input
-                type="color"
-                value={colors.floor}
-                onChange={(event) => setFloorColor(event.target.value)}
-                className="h-9 w-16 p-1 bg-muted/40 border-border/60"
-              />
-              <p className="text-xs text-muted-foreground">Japandi wood tone / material placeholder</p>
-            </div>
-          </div>
-        </TabsContent>
-
-        <TabsContent value="view" className="flex-1 overflow-y-auto p-4 space-y-4 mt-0">
-          <div>
-            <h3 className="font-display text-sm font-semibold text-foreground mb-3">Camera View</h3>
-            <div className="space-y-2">
-              {VIEW_OPTIONS.map((option) => (
-                <button
-                  key={option.id}
-                  onClick={() => setViewMode(option.id)}
-                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all text-left ${
-                    viewMode === option.id
-                      ? "bg-primary/5 border border-primary/20"
-                      : "hover:bg-muted/50 border border-transparent"
-                  }`}
-                >
-                  <div
-                    className={`w-8 h-8 rounded-lg flex items-center justify-center ${
-                      viewMode === option.id ? "bg-primary/10" : "bg-muted/60"
-                    }`}
-                  >
-                    <Eye className={`w-3.5 h-3.5 ${viewMode === option.id ? "text-primary" : "text-muted-foreground"}`} />
-                  </div>
-                  <div>
-                    <p className={`text-sm font-medium ${viewMode === option.id ? "text-foreground" : "text-foreground/80"}`}>
-                      {option.label}
-                    </p>
-                    <p className="text-xs text-muted-foreground">{option.description}</p>
-                  </div>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="border-t pt-4 space-y-2">
-            <h3 className="font-display text-sm font-semibold text-foreground">Wall Visibility Debug</h3>
-            <p className="text-xs text-muted-foreground">
-              Hidden walls (auto): <span className="font-medium text-foreground">{hiddenWallText}</span>
-            </p>
-            <p className="text-xs text-muted-foreground">
-              Perspective mode allows full 360° orbit. Side/corner angles auto-hide nearest wall(s).
-            </p>
-          </div>
-        </TabsContent>
       </Tabs>
     </div>
   );

@@ -32,24 +32,7 @@ const INITIAL_STATE: RoomPlannerState = {
   },
   viewMode: "perspective",
   hiddenWalls: [],
-  furniture: [
-    {
-      id: crypto.randomUUID(),
-      type: "table",
-      size: FURNITURE_PRESETS.table.size,
-      color: FURNITURE_PRESETS.table.color,
-      position: [0, FURNITURE_PRESETS.table.size[1] / 2, 0],
-      rotationY: 0,
-    },
-    {
-      id: crypto.randomUUID(),
-      type: "chair",
-      size: FURNITURE_PRESETS.chair.size,
-      color: FURNITURE_PRESETS.chair.color,
-      position: [0.95, FURNITURE_PRESETS.chair.size[1] / 2, 0.15],
-      rotationY: 0.6,
-    },
-  ],
+  furniture: [],
 };
 
 function clamp(value: number, min: number, max: number) {
@@ -76,12 +59,66 @@ function clampFurnitureToRoom(room: Dimensions, item: FurnitureItem): FurnitureI
 }
 
 export function useRoomPlanner(): RoomPlannerController {
-  const [state, setState] = useState<RoomPlannerState>(INITIAL_STATE);
+  const [history, setHistory] = useState<{
+    past: RoomPlannerState[];
+    present: RoomPlannerState;
+    future: RoomPlannerState[];
+  }>({
+    past: [],
+    present: INITIAL_STATE,
+    future: [],
+  });
+  const state = history.present;
+
+  const applyStateChange = (updater: (previous: RoomPlannerState) => RoomPlannerState) => {
+    setHistory((previousHistory) => {
+      const nextPresent = updater(previousHistory.present);
+
+      if (nextPresent === previousHistory.present) {
+        return previousHistory;
+      }
+
+      return {
+        past: [...previousHistory.past, previousHistory.present],
+        present: nextPresent,
+        future: [],
+      };
+    });
+  };
+
+  const undo: RoomPlannerController["undo"] = () => {
+    setHistory((previousHistory) => {
+      if (previousHistory.past.length === 0) {
+        return previousHistory;
+      }
+
+      const previousPresent = previousHistory.past[previousHistory.past.length - 1];
+      return {
+        past: previousHistory.past.slice(0, -1),
+        present: previousPresent,
+        future: [previousHistory.present, ...previousHistory.future],
+      };
+    });
+  };
+
+  const redo: RoomPlannerController["redo"] = () => {
+    setHistory((previousHistory) => {
+      if (previousHistory.future.length === 0) {
+        return previousHistory;
+      }
+
+      const nextPresent = previousHistory.future[0];
+      return {
+        past: [...previousHistory.past, previousHistory.present],
+        present: nextPresent,
+        future: previousHistory.future.slice(1),
+      };
+    });
+  };
 
   const setDimension: RoomPlannerController["setDimension"] = (key, rawValue) => {
     const value = Number.isFinite(rawValue) ? clamp(rawValue, 1, 20) : 1;
-
-    setState((previous) => {
+    applyStateChange((previous) => {
       const nextRoom = { ...previous.room, [key]: value };
       return {
         ...previous,
@@ -92,7 +129,7 @@ export function useRoomPlanner(): RoomPlannerController {
   };
 
   const setWallColor: RoomPlannerController["setWallColor"] = (wall, color) => {
-    setState((previous) => ({
+    applyStateChange((previous) => ({
       ...previous,
       colors: {
         ...previous.colors,
@@ -105,7 +142,7 @@ export function useRoomPlanner(): RoomPlannerController {
   };
 
   const setAllWallsColor: RoomPlannerController["setAllWallsColor"] = (color) => {
-    setState((previous) => ({
+    applyStateChange((previous) => ({
       ...previous,
       colors: {
         ...previous.colors,
@@ -120,7 +157,7 @@ export function useRoomPlanner(): RoomPlannerController {
   };
 
   const setFloorColor: RoomPlannerController["setFloorColor"] = (color) => {
-    setState((previous) => ({
+    applyStateChange((previous) => ({
       ...previous,
       colors: {
         ...previous.colors,
@@ -130,11 +167,11 @@ export function useRoomPlanner(): RoomPlannerController {
   };
 
   const setViewMode: RoomPlannerController["setViewMode"] = (mode) => {
-    setState((previous) => ({ ...previous, viewMode: mode }));
+    applyStateChange((previous) => ({ ...previous, viewMode: mode }));
   };
 
   const setHiddenWalls: RoomPlannerController["setHiddenWalls"] = (walls) => {
-    setState((previous) => {
+    applyStateChange((previous) => {
       if (sameWalls(previous.hiddenWalls, walls)) {
         return previous;
       }
@@ -143,7 +180,7 @@ export function useRoomPlanner(): RoomPlannerController {
   };
 
   const setFurniturePosition: RoomPlannerController["setFurniturePosition"] = (id, position) => {
-    setState((previous) => {
+    applyStateChange((previous) => {
       let changed = false;
 
       const nextFurniture = previous.furniture.map((item) => {
@@ -181,7 +218,7 @@ export function useRoomPlanner(): RoomPlannerController {
   };
 
   const removeFurniture: RoomPlannerController["removeFurniture"] = (id) => {
-    setState((previous) => {
+    applyStateChange((previous) => {
       const nextFurniture = previous.furniture.filter((item) => item.id !== id);
 
       if (nextFurniture.length === previous.furniture.length) {
@@ -196,7 +233,7 @@ export function useRoomPlanner(): RoomPlannerController {
   };
 
   const addFurniture: RoomPlannerController["addFurniture"] = (type) => {
-    setState((previous) => {
+    applyStateChange((previous) => {
       const preset = FURNITURE_PRESETS[type];
       const index = previous.furniture.length;
       const column = index % 3;
@@ -221,11 +258,15 @@ export function useRoomPlanner(): RoomPlannerController {
   };
 
   const clearFurniture: RoomPlannerController["clearFurniture"] = () => {
-    setState((previous) => ({ ...previous, furniture: [] }));
+    applyStateChange((previous) => ({ ...previous, furniture: [] }));
   };
 
   return {
     state,
+    canUndo: history.past.length > 0,
+    canRedo: history.future.length > 0,
+    undo,
+    redo,
     setDimension,
     setWallColor,
     setAllWallsColor,

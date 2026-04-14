@@ -1,12 +1,19 @@
+import { Html } from "@react-three/drei";
 import { ThreeEvent } from "@react-three/fiber";
 import { useEffect, useRef, useState } from "react";
 import { DoubleSide, Plane, Vector3 } from "three";
-import { Dimensions, FurnitureItem, RoomColors, WallId } from "./types";
+import { Dimensions, FurnitureItem, RoomColors, SurfaceSelection, WallId } from "./types";
+import { SURFACE_COLOR_PRESETS, WALL_LABELS } from "./wallColors";
 
 type RoomShellProps = {
   room: Dimensions;
   colors: RoomColors;
   hiddenWalls: WallId[];
+  selectedSurface: SurfaceSelection;
+  onSurfaceSelect: (surface: SurfaceSelection) => void;
+  onWallColorChange: (wall: WallId, color: string) => void;
+  onApplySelectedWallColorToAll: (color: string) => void;
+  onFloorColorChange: (color: string) => void;
 };
 
 type WallSegment = {
@@ -20,6 +27,7 @@ type FurnitureLayerProps = {
   items: FurnitureItem[];
   onMoveItem: (id: string, position: [number, number, number]) => void;
   onDragStateChange?: (isDragging: boolean) => void;
+  onItemPointerDown?: () => void;
 };
 
 type FurnitureObjectProps = {
@@ -37,8 +45,19 @@ type PointerCaptureTarget = {
 
 const FLOOR_UP = new Vector3(0, 1, 0);
 
-export function RoomShell({ room, colors, hiddenWalls }: RoomShellProps) {
+export function RoomShell({
+  room,
+  colors,
+  hiddenWalls,
+  selectedSurface,
+  onSurfaceSelect,
+  onWallColorChange,
+  onApplySelectedWallColorToAll,
+  onFloorColorChange,
+}: RoomShellProps) {
   const hiddenSet = new Set(hiddenWalls);
+  const selectedWall = selectedSurface?.kind === "wall" ? selectedSurface.wall : null;
+  const isFloorSelected = selectedSurface?.kind === "floor";
 
   const wallSegments: WallSegment[] = [
     {
@@ -67,11 +86,28 @@ export function RoomShell({ room, colors, hiddenWalls }: RoomShellProps) {
     },
   ];
 
+  const selectedWallSegment =
+    selectedWall && !hiddenSet.has(selectedWall)
+      ? wallSegments.find((wall) => wall.id === selectedWall) ?? null
+      : null;
+  const selectedWallColor = selectedWall ? colors.walls[selectedWall] : null;
+
   return (
     <group>
-      <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+      <mesh
+        rotation={[-Math.PI / 2, 0, 0]}
+        receiveShadow
+        onPointerDown={(event) => {
+          event.stopPropagation();
+          onSurfaceSelect({ kind: "floor" });
+        }}
+      >
         <planeGeometry args={[room.width, room.length]} />
-        <meshStandardMaterial color={colors.floor} />
+        <meshStandardMaterial
+          color={colors.floor}
+          emissive={"#8da7ff"}
+          emissiveIntensity={isFloorSelected ? 0.16 : 0}
+        />
       </mesh>
 
       {wallSegments.map((wall) =>
@@ -81,12 +117,115 @@ export function RoomShell({ room, colors, hiddenWalls }: RoomShellProps) {
             position={wall.position}
             rotation={wall.rotation}
             receiveShadow
+            onPointerDown={(event) => {
+              event.stopPropagation();
+              onSurfaceSelect({ kind: "wall", wall: wall.id });
+            }}
           >
             <planeGeometry args={wall.size} />
-            <meshStandardMaterial color={colors.walls[wall.id]} side={DoubleSide} />
+            <meshStandardMaterial
+              color={colors.walls[wall.id]}
+              side={DoubleSide}
+              emissive={"#8da7ff"}
+              emissiveIntensity={selectedWall === wall.id ? 0.24 : 0}
+            />
           </mesh>
         ),
       )}
+
+      {selectedWallSegment && selectedWallColor ? (
+        <group position={selectedWallSegment.position} rotation={selectedWallSegment.rotation}>
+          <Html position={[0, 0.2, 0.08]} distanceFactor={8} style={{ pointerEvents: "auto" }}>
+            <div
+              className="w-[188px] rounded-lg border border-border/80 bg-card/95 shadow-soft backdrop-blur-sm p-2.5 space-y-2"
+              onPointerDown={(event) => event.stopPropagation()}
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="flex items-center justify-between">
+                <p className="text-[11px] font-medium text-foreground">
+                  {WALL_LABELS[selectedWallSegment.id]} wall
+                </p>
+                <span className="h-2 w-2 rounded-full bg-primary/80" />
+              </div>
+
+              <div className="grid grid-cols-4 gap-1.5">
+                {SURFACE_COLOR_PRESETS.map((color) => (
+                  <button
+                    key={color}
+                    onClick={() => onWallColorChange(selectedWallSegment.id, color)}
+                    className={`h-6 w-6 rounded-md border transition-all ${
+                      selectedWallColor === color
+                        ? "border-primary ring-2 ring-primary/35"
+                        : "border-border/60 hover:border-border"
+                    }`}
+                    style={{ backgroundColor: color }}
+                    aria-label={`Set ${WALL_LABELS[selectedWallSegment.id]} wall color`}
+                  />
+                ))}
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[11px] text-muted-foreground">Custom</span>
+                <input
+                  type="color"
+                  value={selectedWallColor}
+                  onChange={(event) => onWallColorChange(selectedWallSegment.id, event.target.value)}
+                  className="h-7 w-9 rounded border border-border/70 bg-transparent p-0.5"
+                  aria-label={`Set custom ${WALL_LABELS[selectedWallSegment.id]} wall color`}
+                />
+              </div>
+
+              <button
+                onClick={() => onApplySelectedWallColorToAll(selectedWallColor)}
+                className="w-full h-7 rounded-md border border-border/70 bg-muted/40 text-[11px] text-foreground hover:bg-muted/70 transition-colors"
+              >
+                Apply to all walls
+              </button>
+            </div>
+          </Html>
+        </group>
+      ) : null}
+
+      {isFloorSelected ? (
+        <Html position={[0, 0.05, 0]} distanceFactor={10} style={{ pointerEvents: "auto" }}>
+          <div
+            className="w-[188px] rounded-lg border border-border/80 bg-card/95 shadow-soft backdrop-blur-sm p-2.5 space-y-2"
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-center justify-between">
+              <p className="text-[11px] font-medium text-foreground">Floor</p>
+              <span className="h-2 w-2 rounded-full bg-primary/80" />
+            </div>
+
+            <div className="grid grid-cols-4 gap-1.5">
+              {SURFACE_COLOR_PRESETS.map((color) => (
+                <button
+                  key={color}
+                  onClick={() => onFloorColorChange(color)}
+                  className={`h-6 w-6 rounded-md border transition-all ${
+                    colors.floor === color
+                      ? "border-primary ring-2 ring-primary/35"
+                      : "border-border/60 hover:border-border"
+                  }`}
+                  style={{ backgroundColor: color }}
+                  aria-label="Set floor color"
+                />
+              ))}
+            </div>
+
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-[11px] text-muted-foreground">Custom</span>
+              <input
+                type="color"
+                value={colors.floor}
+                onChange={(event) => onFloorColorChange(event.target.value)}
+                className="h-7 w-9 rounded border border-border/70 bg-transparent p-0.5"
+                aria-label="Set custom floor color"
+              />
+            </div>
+          </div>
+        </Html>
+      ) : null}
     </group>
   );
 }
@@ -155,7 +294,12 @@ function FurnitureObject({
   );
 }
 
-export function FurnitureLayer({ items, onMoveItem, onDragStateChange }: FurnitureLayerProps) {
+export function FurnitureLayer({
+  items,
+  onMoveItem,
+  onDragStateChange,
+  onItemPointerDown,
+}: FurnitureLayerProps) {
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   const draggingItemIdRef = useRef<string | null>(null);
   const activePointerIdRef = useRef<number | null>(null);
@@ -174,6 +318,7 @@ export function FurnitureLayer({ items, onMoveItem, onDragStateChange }: Furnitu
     if (event.button !== 0) {
       return;
     }
+    onItemPointerDown?.();
 
     event.stopPropagation();
     setSelectedItemId(item.id);

@@ -1,6 +1,7 @@
 export type ViewMode = "perspective" | "side" | "top";
 export type WallId = "front" | "back" | "left" | "right";
 export type FurnitureType = "chair" | "table" | "sofa" | "lamp" | "bed" | "plant";
+export type SurfaceSelection = { kind: "wall"; wall: WallId } | { kind: "floor" } | null;
 
 export type Dimensions = {
   width: number;
@@ -32,6 +33,10 @@ export interface RoomPlannerState {
 
 export interface RoomPlannerController {
   state: RoomPlannerState;
+  canUndo: boolean;
+  canRedo: boolean;
+  undo: () => void;
+  redo: () => void;
   setDimension: (key: keyof Dimensions, value: number) => void;
   setWallColor: (wall: WallId, color: string) => void;
   setAllWallsColor: (color: string) => void;

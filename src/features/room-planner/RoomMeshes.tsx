@@ -3,6 +3,7 @@ import { ThreeEvent } from "@react-three/fiber";
 import { useEffect, useRef, useState } from "react";
 import { DoubleSide, Plane, Vector3 } from "three";
 import { Dimensions, FurnitureItem, RoomColors, SurfaceSelection, WallId } from "./types";
+import { applyAxisSnap, getFloorSnapTargets } from "./objectSnapping";
 import { SURFACE_COLOR_PRESETS, WALL_LABELS } from "./wallColors";
 
 type RoomShellProps = {
@@ -24,7 +25,10 @@ type WallSegment = {
 };
 
 type FurnitureLayerProps = {
+  room: Dimensions;
   items: FurnitureItem[];
+  selectedItemId: string | null;
+  onSelectItem: (id: string) => void;
   onMoveItem: (id: string, position: [number, number, number]) => void;
   onDragStateChange?: (isDragging: boolean) => void;
   onItemPointerDown?: () => void;
@@ -295,24 +299,35 @@ function FurnitureObject({
 }
 
 export function FurnitureLayer({
+  room,
   items,
+  selectedItemId,
+  onSelectItem,
   onMoveItem,
   onDragStateChange,
   onItemPointerDown,
 }: FurnitureLayerProps) {
-  const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   const draggingItemIdRef = useRef<string | null>(null);
   const activePointerIdRef = useRef<number | null>(null);
   const dragPlaneRef = useRef(new Plane());
   const dragIntersectionRef = useRef(new Vector3());
   const dragOffsetRef = useRef(new Vector3());
   const dragHeightRef = useRef(0);
+  const [snappedAxes, setSnappedAxes] = useState<{ x: boolean; z: boolean }>({ x: false, z: false });
 
   useEffect(() => {
     return () => {
       onDragStateChange?.(false);
     };
   }, [onDragStateChange]);
+
+  useEffect(() => {
+    if (draggingItemIdRef.current) {
+      return;
+    }
+
+    setSnappedAxes((current) => (current.x || current.z ? { x: false, z: false } : current));
+  }, [selectedItemId]);
 
   const handlePointerDown = (event: ThreeEvent<PointerEvent>, item: FurnitureItem) => {
     if (event.button !== 0) {
@@ -321,7 +336,7 @@ export function FurnitureLayer({
     onItemPointerDown?.();
 
     event.stopPropagation();
-    setSelectedItemId(item.id);
+    onSelectItem(item.id);
 
     draggingItemIdRef.current = item.id;
     activePointerIdRef.current = event.pointerId;
@@ -341,6 +356,7 @@ export function FurnitureLayer({
     const captureTarget = event.target as unknown as PointerCaptureTarget;
     captureTarget.setPointerCapture?.(event.pointerId);
     onDragStateChange?.(true);
+    setSnappedAxes({ x: false, z: false });
   };
 
   const handlePointerMove = (event: ThreeEvent<PointerEvent>, item: FurnitureItem) => {
@@ -354,11 +370,19 @@ export function FurnitureLayer({
       return;
     }
 
-    onMoveItem(item.id, [
-      dragIntersectionRef.current.x + dragOffsetRef.current.x,
-      dragHeightRef.current,
-      dragIntersectionRef.current.z + dragOffsetRef.current.z,
-    ]);
+    const rawX = dragIntersectionRef.current.x + dragOffsetRef.current.x;
+    const rawZ = dragIntersectionRef.current.z + dragOffsetRef.current.z;
+    const snapTargets = getFloorSnapTargets();
+    const snappedX = applyAxisSnap(rawX, snapTargets.x);
+    const snappedZ = applyAxisSnap(rawZ, snapTargets.z);
+
+    setSnappedAxes((current) =>
+      current.x === snappedX.snapped && current.z === snappedZ.snapped
+        ? current
+        : { x: snappedX.snapped, z: snappedZ.snapped },
+    );
+
+    onMoveItem(item.id, [snappedX.value, dragHeightRef.current, snappedZ.value]);
   };
 
   const handlePointerUp = (event: ThreeEvent<PointerEvent>, item: FurnitureItem) => {
@@ -373,10 +397,23 @@ export function FurnitureLayer({
     const captureTarget = event.target as unknown as PointerCaptureTarget;
     captureTarget.releasePointerCapture?.(event.pointerId);
     onDragStateChange?.(false);
+    setSnappedAxes({ x: false, z: false });
   };
 
   return (
     <group>
+      {snappedAxes.x ? (
+        <mesh position={[0, 0.008, 0]}>
+          <boxGeometry args={[0.012, 0.012, room.length]} />
+          <meshBasicMaterial color={"#7f9dff"} transparent opacity={0.45} depthWrite={false} />
+        </mesh>
+      ) : null}
+      {snappedAxes.z ? (
+        <mesh position={[0, 0.008, 0]}>
+          <boxGeometry args={[room.width, 0.012, 0.012]} />
+          <meshBasicMaterial color={"#7f9dff"} transparent opacity={0.45} depthWrite={false} />
+        </mesh>
+      ) : null}
       {items.map((item) => (
         <FurnitureObject
           key={item.id}

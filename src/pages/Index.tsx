@@ -4,7 +4,12 @@ import TopNav from "@/components/TopNav";
 import RoomPreview from "@/components/RoomPreview";
 import SidePanel from "@/components/SidePanel";
 import { toast } from "@/components/ui/sonner";
-import { importProjectFromJsonText } from "@/features/room-planner/projectImport";
+import {
+  applyProjectData,
+  exportProjectAsJson,
+  importProjectFromJson,
+  saveProjectToLocalStorage,
+} from "@/features/room-planner/projectPersistence";
 import { useRoomPlanner } from "@/features/room-planner/useRoomPlanner";
 
 const Index = () => {
@@ -15,6 +20,23 @@ const Index = () => {
   const handleImportProjectClick = () => {
     importFileInputRef.current?.click();
   };
+  const handleSaveProject = () => {
+    if (saveProjectToLocalStorage(planner.state)) {
+      toast.message("Project saved");
+      return;
+    }
+
+    toast.error("Unable to save project");
+  };
+
+  const handleExportProject = () => {
+    if (exportProjectAsJson(planner.state)) {
+      toast.message("Project exported");
+      return;
+    }
+
+    toast.error("Unable to export project");
+  };
 
   const handleProjectFileChange = async (event: ChangeEvent<HTMLInputElement>) => {
     const selectedFile = event.target.files?.[0];
@@ -23,25 +45,19 @@ const Index = () => {
     if (!selectedFile) {
       return;
     }
-
-    try {
-      const fileContent = await selectedFile.text();
-      const importResult = importProjectFromJsonText(fileContent);
-
-      if (!importResult.ok) {
-        toast.error("Invalid or unsupported project file");
-        return;
-      }
-
-      planner.applyImportedProject(importResult.state);
-      if (importResult.status === "partial") {
-        toast.message("Project imported with some unsupported elements skipped");
-      } else {
-        toast.success("Project imported");
-      }
-    } catch {
-      toast.error("Invalid or unsupported project file");
+    const importResult = await importProjectFromJson(selectedFile);
+    if (!importResult.ok) {
+      toast.error("Invalid project file");
+      return;
     }
+
+    applyProjectData(importResult.state, planner.applyImportedProject);
+    if (importResult.status === "partial") {
+      toast.message("Project imported with some unsupported elements skipped");
+      return;
+    }
+
+    toast.success("Project imported");
   };
   const handleToggleViewMode = () => {
     planner.setViewMode(planner.state.viewMode === "top" ? "perspective" : "top");
@@ -53,6 +69,8 @@ const Index = () => {
         onToggleViewMode={handleToggleViewMode}
         onBack={planner.undo}
         onForward={planner.redo}
+        onSaveProject={handleSaveProject}
+        onExportProject={handleExportProject}
         onImportProject={handleImportProjectClick}
         onOpenAbout={() => setIsAboutOpen(true)}
         canGoBack={planner.canUndo}

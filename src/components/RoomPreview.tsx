@@ -12,9 +12,10 @@ const VIEW_MODE_LABELS: Record<ViewMode, string> = {
 
 const RoomPreview = ({ planner }: RoomPreviewProps) => {
   const {
-    state: { room, viewMode, furniture, hiddenWalls },
+    state: { room, hiddenWalls },
     setHiddenWalls,
     setFurniturePosition,
+    setWallObjectPlacement,
     setWallColor,
     setAllWallsColor,
     setFloorColor,
@@ -29,13 +30,14 @@ const RoomPreview = ({ planner }: RoomPreviewProps) => {
           state={planner.state}
           onHiddenWallsChange={setHiddenWalls}
           onFurniturePositionChange={setFurniturePosition}
+          onWallObjectPlacementChange={setWallObjectPlacement}
           onWallColorChange={setWallColor}
           onApplyWallColorToAll={setAllWallsColor}
           onFloorColorChange={setFloorColor}
         />
 
         <div className="absolute top-2 sm:top-4 left-2 sm:left-4 bg-card/85 backdrop-blur-sm rounded-lg shadow-soft border px-2.5 sm:px-3 py-1.5 text-[11px] sm:text-xs text-muted-foreground">
-          Drag to orbit camera · click wall/floor to edit color · click and drag object to move
+          Drag to orbit camera · click wall/floor to edit color · drag objects to move
         </div>
 
         <div className="absolute bottom-2 sm:bottom-4 left-2 sm:left-4 right-2 sm:right-4 flex flex-col md:flex-row justify-between md:items-center gap-2">

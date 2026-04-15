@@ -6,6 +6,8 @@ import {
   RoomPlannerController,
   RoomPlannerState,
   ViewMode,
+  WallObjectItem,
+  WallObjectType,
   WallId,
 } from "./types";
 import {
@@ -15,8 +17,11 @@ import {
   DEFAULT_VIEW_MODE,
   FURNITURE_PRESETS,
   VIEW_MODES,
+  WALL_OBJECT_PRESETS,
   WALL_IDS,
 } from "./defaults";
+import { clampWallObjectToRoom } from "./wallObjectPlacement";
+import { getVisibleWalls } from "./wallVisibility";
 
 function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value));
@@ -33,6 +38,9 @@ function isWallId(value: unknown): value is WallId {
 function isViewMode(value: unknown): value is ViewMode {
   return typeof value === "string" && VIEW_MODES.includes(value as ViewMode);
 }
+function isWallObjectType(value: unknown): value is WallObjectType {
+  return value === "window" || value === "door";
+}
 
 function createImportedFurnitureId(index: number): string {
   if (globalThis.crypto?.randomUUID) {
@@ -40,6 +48,18 @@ function createImportedFurnitureId(index: number): string {
   }
 
   return `imported-${index + 1}`;
+}
+
+function createImportedWallObjectId(index: number): string {
+  if (globalThis.crypto?.randomUUID) {
+    return globalThis.crypto.randomUUID();
+  }
+
+  return `imported-wall-object-${index + 1}`;
+}
+
+function chooseDefaultWall(hiddenWalls: WallId[]): WallId | null {
+  return getVisibleWalls(hiddenWalls)[0] ?? null;
 }
 
 function clampFurnitureToRoom(room: Dimensions, item: FurnitureItem): FurnitureItem {
@@ -127,6 +147,32 @@ function sanitizeImportedState(importedState: RoomPlannerState): RoomPlannerStat
     })
     .filter((item): item is FurnitureItem => item !== null);
 
+  const wallObjects = (importedState.wallObjects ?? [])
+    .map((item, index) => {
+      if (!isWallObjectType(item?.type)) {
+        return null;
+      }
+
+      const wallId = isWallId(item.wallId) ? item.wallId : "front";
+      const preset = WALL_OBJECT_PRESETS[item.type];
+      return clampWallObjectToRoom(room, {
+        id:
+          typeof item.id === "string" && item.id.trim() !== ""
+            ? item.id
+            : createImportedWallObjectId(index),
+        type: item.type,
+        wallId,
+        width: Number.isFinite(item.width) ? item.width : preset.width,
+        height: Number.isFinite(item.height) ? item.height : preset.height,
+        depth: Number.isFinite(item.depth) ? item.depth : preset.depth,
+        offsetX: Number.isFinite(item.offsetX) ? item.offsetX : 0,
+        bottom: Number.isFinite(item.bottom) ? item.bottom : preset.bottom,
+        color: typeof item.color === "string" && item.color.trim() !== "" ? item.color : preset.color,
+        metadata: item.metadata,
+      });
+    })
+    .filter((item): item is WallObjectItem => item !== null);
+
   return {
     room,
     colors: {
@@ -136,6 +182,7 @@ function sanitizeImportedState(importedState: RoomPlannerState): RoomPlannerStat
     viewMode,
     hiddenWalls,
     furniture,
+    wallObjects,
   };
 }
 
@@ -205,6 +252,7 @@ export function useRoomPlanner(): RoomPlannerController {
         ...previous,
         room: nextRoom,
         furniture: previous.furniture.map((item) => clampFurnitureToRoom(nextRoom, item)),
+        wallObjects: previous.wallObjects.map((item) => clampWallObjectToRoom(nextRoom, item)),
       };
     });
   };
@@ -342,6 +390,112 @@ export function useRoomPlanner(): RoomPlannerController {
     applyStateChange((previous) => ({ ...previous, furniture: [] }));
   };
 
+  const addWallObject: RoomPlannerController["addWallObject"] = (type, requestedWallId) => {
+    const interactiveWalls = getVisibleWalls(state.hiddenWalls);
+    const hasValidRequestedWall =
+      typeof requestedWallId === "string" && interactiveWalls.includes(requestedWallId);
+    if (!hasValidRequestedWall && interactiveWalls.length === 0) {
+      return false;
+    }
+    applyStateChange((previous) => {
+      const wallId =
+        requestedWallId && isWallId(requestedWallId) && !previous.hiddenWalls.includes(requestedWallId)
+          ? requestedWallId
+          : chooseDefaultWall(previous.hiddenWalls);
+      if (!wallId) {
+        return previous;
+      }
+      const preset = WALL_OBJECT_PRESETS[type];
+      const countOnWall = previous.wallObjects.filter((item) => item.wallId === wallId).length;
+      const offsetX = ((countOnWall % 4) - 1.5) * (preset.width + 0.2);
+
+      const nextItem = clampWallObjectToRoom(previous.room, {
+        id: crypto.randomUUID(),
+        type,
+        wallId,
+        width: preset.width,
+        height: preset.height,
+        depth: preset.depth,
+        offsetX,
+        bottom: preset.bottom,
+        color: preset.color,
+      });
+
+      return {
+        ...previous,
+        wallObjects: [...previous.wallObjects, nextItem],
+      };
+    });
+    return true;
+  };
+
+  const setWallObjectPlacement: RoomPlannerController["setWallObjectPlacement"] = (id, updates) => {
+    applyStateChange((previous) => {
+      let changed = false;
+
+      const nextWallObjects = previous.wallObjects.map((item) => {
+        if (item.id !== id) {
+          return item;
+        }
+
+        const nextWallId = updates.wallId && isWallId(updates.wallId) ? updates.wallId : item.wallId;
+        const clamped = clampWallObjectToRoom(previous.room, {
+          ...item,
+          wallId: nextWallId,
+          offsetX: updates.offsetX ?? item.offsetX,
+          bottom: updates.bottom ?? item.bottom,
+        });
+
+        const isSame =
+          item.wallId === clamped.wallId &&
+          item.offsetX === clamped.offsetX &&
+          item.bottom === clamped.bottom;
+        if (isSame) {
+          return item;
+        }
+
+        changed = true;
+        return clamped;
+      });
+
+      if (!changed) {
+        return previous;
+      }
+
+      return {
+        ...previous,
+        wallObjects: nextWallObjects,
+      };
+    });
+  };
+
+  const removeWallObject: RoomPlannerController["removeWallObject"] = (id) => {
+    applyStateChange((previous) => {
+      const nextWallObjects = previous.wallObjects.filter((item) => item.id !== id);
+      if (nextWallObjects.length === previous.wallObjects.length) {
+        return previous;
+      }
+
+      return {
+        ...previous,
+        wallObjects: nextWallObjects,
+      };
+    });
+  };
+
+  const clearWallObjects: RoomPlannerController["clearWallObjects"] = () => {
+    applyStateChange((previous) => {
+      if (previous.wallObjects.length === 0) {
+        return previous;
+      }
+
+      return {
+        ...previous,
+        wallObjects: [],
+      };
+    });
+  };
+
   const applyImportedProject: RoomPlannerController["applyImportedProject"] = (importedState) => {
     applyStateChange(() => sanitizeImportedState(importedState));
   };
@@ -362,6 +516,10 @@ export function useRoomPlanner(): RoomPlannerController {
     removeFurniture,
     addFurniture,
     clearFurniture,
+    addWallObject,
+    setWallObjectPlacement,
+    removeWallObject,
+    clearWallObjects,
     applyImportedProject,
   };
 }

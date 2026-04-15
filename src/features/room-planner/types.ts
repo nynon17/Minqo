@@ -47,4 +47,5 @@ export interface RoomPlannerController {
   removeFurniture: (id: string) => void;
   addFurniture: (type: FurnitureType) => void;
   clearFurniture: () => void;
+  applyImportedProject: (state: RoomPlannerState) => void;
 }

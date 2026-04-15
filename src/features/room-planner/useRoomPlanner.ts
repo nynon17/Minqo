@@ -5,35 +5,18 @@ import {
   FurnitureType,
   RoomPlannerController,
   RoomPlannerState,
+  ViewMode,
   WallId,
 } from "./types";
-
-const DEFAULT_ROOM: Dimensions = { width: 4, length: 3.5, height: 2.8 };
-
-const FURNITURE_PRESETS: Record<FurnitureType, { size: [number, number, number]; color: string }> = {
-  chair: { size: [0.6, 0.85, 0.6], color: "#b89473" },
-  table: { size: [1.2, 0.75, 0.8], color: "#9f7652" },
-  sofa: { size: [1.8, 0.9, 0.85], color: "#d7c6b0" },
-  lamp: { size: [0.3, 1.5, 0.3], color: "#f2e7d7" },
-  bed: { size: [2.0, 0.65, 1.5], color: "#c8b6a1" },
-  plant: { size: [0.45, 0.9, 0.45], color: "#81966e" },
-};
-
-const INITIAL_STATE: RoomPlannerState = {
-  room: DEFAULT_ROOM,
-  colors: {
-    floor: "#cda97f",
-    walls: {
-      front: "#f5eee5",
-      back: "#f5eee5",
-      left: "#efe7dc",
-      right: "#efe7dc",
-    },
-  },
-  viewMode: "perspective",
-  hiddenWalls: [],
-  furniture: [],
-};
+import {
+  createInitialPlannerState,
+  DEFAULT_COLORS,
+  DEFAULT_ROOM,
+  DEFAULT_VIEW_MODE,
+  FURNITURE_PRESETS,
+  VIEW_MODES,
+  WALL_IDS,
+} from "./defaults";
 
 function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value));
@@ -41,6 +24,22 @@ function clamp(value: number, min: number, max: number) {
 
 function sameWalls(a: WallId[], b: WallId[]) {
   return a.length === b.length && a.every((value, index) => value === b[index]);
+}
+
+function isWallId(value: unknown): value is WallId {
+  return typeof value === "string" && WALL_IDS.includes(value as WallId);
+}
+
+function isViewMode(value: unknown): value is ViewMode {
+  return typeof value === "string" && VIEW_MODES.includes(value as ViewMode);
+}
+
+function createImportedFurnitureId(index: number): string {
+  if (globalThis.crypto?.randomUUID) {
+    return globalThis.crypto.randomUUID();
+  }
+
+  return `imported-${index + 1}`;
 }
 
 function clampFurnitureToRoom(room: Dimensions, item: FurnitureItem): FurnitureItem {
@@ -58,6 +57,88 @@ function clampFurnitureToRoom(room: Dimensions, item: FurnitureItem): FurnitureI
   };
 }
 
+function sanitizeImportedState(importedState: RoomPlannerState): RoomPlannerState {
+  const room = {
+    width: clamp(
+      Number.isFinite(importedState.room.width) ? importedState.room.width : DEFAULT_ROOM.width,
+      1,
+      20,
+    ),
+    length: clamp(
+      Number.isFinite(importedState.room.length) ? importedState.room.length : DEFAULT_ROOM.length,
+      1,
+      20,
+    ),
+    height: clamp(
+      Number.isFinite(importedState.room.height) ? importedState.room.height : DEFAULT_ROOM.height,
+      1,
+      20,
+    ),
+  };
+
+  const walls: Record<WallId, string> = { ...DEFAULT_COLORS.walls };
+  WALL_IDS.forEach((wall) => {
+    const wallColor = importedState.colors?.walls?.[wall];
+    if (typeof wallColor === "string" && wallColor.trim() !== "") {
+      walls[wall] = wallColor;
+    }
+  });
+
+  const floorColor =
+    typeof importedState.colors?.floor === "string" && importedState.colors.floor.trim() !== ""
+      ? importedState.colors.floor
+      : DEFAULT_COLORS.floor;
+
+  const hiddenWalls = importedState.hiddenWalls.filter(
+    (wall, index, source) => isWallId(wall) && source.indexOf(wall) === index,
+  );
+  const viewMode = isViewMode(importedState.viewMode) ? importedState.viewMode : DEFAULT_VIEW_MODE;
+
+  const furniture = importedState.furniture
+    .map((item, index) => {
+      const preset = FURNITURE_PRESETS[item.type];
+      if (!preset) {
+        return null;
+      }
+
+      const size: [number, number, number] = [
+        clamp(Number.isFinite(item.size[0]) ? item.size[0] : preset.size[0], 0.1, 10),
+        clamp(Number.isFinite(item.size[1]) ? item.size[1] : preset.size[1], 0.1, 10),
+        clamp(Number.isFinite(item.size[2]) ? item.size[2] : preset.size[2], 0.1, 10),
+      ];
+
+      const position: [number, number, number] = [
+        Number.isFinite(item.position[0]) ? item.position[0] : 0,
+        Number.isFinite(item.position[1]) ? item.position[1] : size[1] / 2,
+        Number.isFinite(item.position[2]) ? item.position[2] : 0,
+      ];
+
+      return clampFurnitureToRoom(room, {
+        id:
+          typeof item.id === "string" && item.id.trim() !== ""
+            ? item.id
+            : createImportedFurnitureId(index),
+        type: item.type,
+        size,
+        color: typeof item.color === "string" && item.color.trim() !== "" ? item.color : preset.color,
+        position,
+        rotationY: Number.isFinite(item.rotationY) ? item.rotationY : 0,
+      });
+    })
+    .filter((item): item is FurnitureItem => item !== null);
+
+  return {
+    room,
+    colors: {
+      floor: floorColor,
+      walls,
+    },
+    viewMode,
+    hiddenWalls,
+    furniture,
+  };
+}
+
 export function useRoomPlanner(): RoomPlannerController {
   const [history, setHistory] = useState<{
     past: RoomPlannerState[];
@@ -65,7 +146,7 @@ export function useRoomPlanner(): RoomPlannerController {
     future: RoomPlannerState[];
   }>({
     past: [],
-    present: INITIAL_STATE,
+    present: createInitialPlannerState(),
     future: [],
   });
   const state = history.present;
@@ -261,6 +342,10 @@ export function useRoomPlanner(): RoomPlannerController {
     applyStateChange((previous) => ({ ...previous, furniture: [] }));
   };
 
+  const applyImportedProject: RoomPlannerController["applyImportedProject"] = (importedState) => {
+    applyStateChange(() => sanitizeImportedState(importedState));
+  };
+
   return {
     state,
     canUndo: history.past.length > 0,
@@ -277,5 +362,6 @@ export function useRoomPlanner(): RoomPlannerController {
     removeFurniture,
     addFurniture,
     clearFurniture,
+    applyImportedProject,
   };
 }

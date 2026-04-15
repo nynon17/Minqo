@@ -1,4 +1,4 @@
-import { Download, Eye, HelpCircle, Home, Redo2, Save, Settings, Undo2 } from "lucide-react";
+import { Eye, HelpCircle, Home, Redo2, Save, Settings, Undo2, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ViewMode } from "@/features/room-planner/types";
 import { cn } from "@/lib/utils";
@@ -8,6 +8,7 @@ type TopNavProps = {
   onToggleViewMode: () => void;
   onBack: () => void;
   onForward: () => void;
+  onImportProject: () => void;
   onOpenAbout: () => void;
   canGoBack: boolean;
   canGoForward: boolean;
@@ -18,6 +19,7 @@ const TopNav = ({
   onToggleViewMode,
   onBack,
   onForward,
+  onImportProject,
   onOpenAbout,
   canGoBack,
   canGoForward,
@@ -76,8 +78,15 @@ const TopNav = ({
         <Button variant="ghost" size="icon" className="hidden sm:inline-flex text-muted-foreground hover:text-foreground">
           <Save className="w-4 h-4" />
         </Button>
-        <Button variant="ghost" size="icon" className="hidden sm:inline-flex text-muted-foreground hover:text-foreground">
-          <Download className="w-4 h-4" />
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={onImportProject}
+          aria-label="Import project file"
+          title="Import project"
+          className="hidden sm:inline-flex text-muted-foreground hover:text-foreground"
+        >
+          <Upload className="w-4 h-4" />
         </Button>
         <div className="hidden md:block w-px h-5 bg-border mx-2" />
         <Button

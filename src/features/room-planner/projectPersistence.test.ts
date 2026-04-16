@@ -36,6 +36,7 @@ function createSampleState(): RoomPlannerState {
         color: "#aaaaaa",
         position: [0.5, 0.425, -0.5],
         rotationY: 0.2,
+        visible: true,
       },
     ],
     wallObjects: [
@@ -50,6 +51,7 @@ function createSampleState(): RoomPlannerState {
         bottom: 1.1,
         color: "#b8cad8",
         metadata: { style: "frame", material: "wood" },
+        visible: true,
       },
     ],
   };
@@ -99,6 +101,7 @@ describe("projectPersistence", () => {
     expect(parsed.version).toBe(MINQO_PROJECT_VERSION);
     expect(parsed.project.room.width).toBe(5.1);
     expect(parsed.project.wallObjects[0].wallId).toBe("front");
+    expect(parsed.project.furniture[0].visible).toBe(true);
   });
 
   it("exports project data by creating a JSON download", () => {
@@ -149,7 +152,9 @@ describe("projectPersistence", () => {
     expect(result.status).toBe("full");
     expect(result.state.room.width).toBe(sampleState.room.width);
     expect(result.state.furniture[0].rotationY).toBe(0.2);
+    expect(result.state.furniture[0].visible).toBe(true);
     expect(result.state.wallObjects[0].type).toBe("window");
+    expect(result.state.wallObjects[0].visible).toBe(true);
   });
 
   it("rejects non-json files before parsing", async () => {

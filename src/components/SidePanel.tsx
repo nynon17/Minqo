@@ -9,9 +9,9 @@ import {
   BedDouble,
   DoorOpen,
   Eye,
+  EyeOff,
   Flower2,
   Lamp,
-  Palette,
   Ruler,
   Sofa,
   Square,
@@ -28,28 +28,24 @@ import {
   getWallObjectDisplayNames,
   getWallObjectTypeLabel,
 } from "@/features/room-planner/furnitureNaming";
+import { formatDimensionValue } from "@/features/settings/formatting";
 import {
   Dimensions,
   FurnitureType,
   RoomPlannerController,
-  ViewMode,
   WallObjectType,
 } from "@/features/room-planner/types";
+import { AppSettings, Units } from "@/features/settings/types";
 
 type SidePanelProps = {
   planner: RoomPlannerController;
+  settings: AppSettings;
 };
 
-const DIMENSION_FIELDS: Array<{ key: keyof Dimensions; label: string; step: number }> = [
-  { key: "width", label: "Width", step: 0.1 },
-  { key: "length", label: "Length", step: 0.1 },
-  { key: "height", label: "Height", step: 0.1 },
-];
-
-const VIEW_OPTIONS: Array<{ id: ViewMode; label: string; description: string }> = [
-  { id: "perspective", label: "Perspective", description: "360° orbit camera" },
-  { id: "side", label: "Side", description: "Orthographic-style side framing" },
-  { id: "top", label: "Top", description: "Bird's-eye plan view" },
+const DIMENSION_FIELDS: Array<{ key: keyof Dimensions; label: string }> = [
+  { key: "width", label: "Width" },
+  { key: "length", label: "Length" },
+  { key: "height", label: "Height" },
 ];
 
 
@@ -76,43 +72,65 @@ const WALL_OBJECT_ACTIONS: Array<{
 const FURNITURE_HEIGHT_STEP = 0.1;
 const WALL_OBJECT_HORIZONTAL_STEP = 0.1;
 const WALL_OBJECT_VERTICAL_STEP = 0.1;
+function toDisplayDimensionValue(valueMeters: number, units: Units): string {
+  if (units === "cm") {
+    return Math.round(valueMeters * 100).toString();
+  }
 
-const toDimensionDrafts = (room: Dimensions): Record<keyof Dimensions, string> => ({
-  width: room.width.toString(),
-  length: room.length.toString(),
-  height: room.height.toString(),
+  return valueMeters.toString();
+}
+
+function toPlannerDimensionValue(value: number, units: Units): number {
+  if (units === "cm") {
+    return value / 100;
+  }
+
+  return value;
+}
+
+const toDimensionDrafts = (room: Dimensions, units: Units): Record<keyof Dimensions, string> => ({
+  width: toDisplayDimensionValue(room.width, units),
+  length: toDisplayDimensionValue(room.length, units),
+  height: toDisplayDimensionValue(room.height, units),
 });
 
-const SidePanel = ({ planner }: SidePanelProps) => {
+const SidePanel = ({ planner, settings }: SidePanelProps) => {
   const {
-    state: { room, viewMode, furniture, wallObjects, hiddenWalls },
+    state: { room, furniture, wallObjects },
     setDimension,
-    setViewMode,
     setFurniturePosition,
+    setFurnitureVisibility,
     removeFurniture,
     addFurniture,
     clearFurniture,
     addWallObject,
     setWallObjectPlacement,
+    setWallObjectVisibility,
     removeWallObject,
     clearWallObjects,
   } = planner;
 
-  const hiddenWallText = hiddenWalls.length > 0 ? hiddenWalls.join(", ") : "none";
   const furnitureDisplayNames = getFurnitureDisplayNames(furniture);
   const wallObjectDisplayNames = getWallObjectDisplayNames(wallObjects);
   const [activeDimension, setActiveDimension] = useState<keyof Dimensions | null>(null);
   const [dimensionDrafts, setDimensionDrafts] = useState<Record<keyof Dimensions, string>>(() =>
-    toDimensionDrafts(room),
+    toDimensionDrafts(room, settings.general.units),
   );
 
   useEffect(() => {
     setDimensionDrafts((previous) => ({
-      width: activeDimension === "width" ? previous.width : room.width.toString(),
-      length: activeDimension === "length" ? previous.length : room.length.toString(),
-      height: activeDimension === "height" ? previous.height : room.height.toString(),
+      width:
+        activeDimension === "width" ? previous.width : toDisplayDimensionValue(room.width, settings.general.units),
+      length:
+        activeDimension === "length"
+          ? previous.length
+          : toDisplayDimensionValue(room.length, settings.general.units),
+      height:
+        activeDimension === "height"
+          ? previous.height
+          : toDisplayDimensionValue(room.height, settings.general.units),
     }));
-  }, [activeDimension, room.height, room.length, room.width]);
+  }, [activeDimension, room.height, room.length, room.width, settings.general.units]);
 
   const handleDimensionInputChange = (key: keyof Dimensions, rawValue: string) => {
     setDimensionDrafts((previous) => ({ ...previous, [key]: rawValue }));
@@ -123,7 +141,7 @@ const SidePanel = ({ planner }: SidePanelProps) => {
 
     const value = Number(rawValue);
     if (Number.isFinite(value)) {
-      setDimension(key, value);
+      setDimension(key, toPlannerDimensionValue(value, settings.general.units));
     }
   };
 
@@ -135,20 +153,20 @@ const SidePanel = ({ planner }: SidePanelProps) => {
     if (rawValue === "") {
       setDimensionDrafts((previous) => ({
         ...previous,
-        [key]: room[key].toString(),
+        [key]: toDisplayDimensionValue(room[key], settings.general.units),
       }));
       return;
     }
 
     const value = Number(rawValue);
     if (Number.isFinite(value)) {
-      setDimension(key, value);
+      setDimension(key, toPlannerDimensionValue(value, settings.general.units));
       return;
     }
 
     setDimensionDrafts((previous) => ({
       ...previous,
-      [key]: room[key].toString(),
+      [key]: toDisplayDimensionValue(room[key], settings.general.units),
     }));
   };
 
@@ -180,9 +198,9 @@ const SidePanel = ({ planner }: SidePanelProps) => {
                   <div className="flex-1 relative">
                     <Input
                       type="number"
-                      min={1}
-                      max={20}
-                      step={dim.step}
+                      min={settings.general.units === "cm" ? 100 : 1}
+                      max={settings.general.units === "cm" ? 2000 : 20}
+                      step={settings.general.units === "cm" ? 10 : 0.1}
                       value={dimensionDrafts[dim.key]}
                       onFocus={() => setActiveDimension(dim.key)}
                       onChange={(event) => handleDimensionInputChange(dim.key, event.target.value)}
@@ -190,7 +208,7 @@ const SidePanel = ({ planner }: SidePanelProps) => {
                       className="h-9 text-sm pr-8 bg-muted/40 border-border/60 focus:bg-card"
                     />
                     <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">
-                      m
+                      {settings.general.units}
                     </span>
                   </div>
                 </div>
@@ -304,13 +322,15 @@ const SidePanel = ({ planner }: SidePanelProps) => {
                 {furniture.map((item) => (
                   <div
                     key={item.id}
-                    className="rounded-lg border border-border/60 bg-muted/20 px-2.5 py-2"
+                    className={`rounded-lg border border-border/60 bg-muted/20 px-2.5 py-2 transition-opacity ${
+                      item.visible !== false ? "" : "opacity-70"
+                    }`}
                   >
                     <div className="flex items-center justify-between gap-2">
                       <div>
                         <p className="text-xs font-medium text-foreground">{furnitureDisplayNames[item.id]}</p>
                         <p className="text-[11px] text-muted-foreground">
-                          Height: {item.position[1].toFixed(2)}m
+                          Height: {formatDimensionValue(item.position[1], settings.general.units)}
                         </p>
                       </div>
                       <div className="flex items-center gap-1">
@@ -347,6 +367,19 @@ const SidePanel = ({ planner }: SidePanelProps) => {
                         <Button
                           variant="outline"
                           size="icon"
+                          className="h-7 w-7 bg-card/80"
+                          onClick={() => setFurnitureVisibility(item.id, item.visible === false)}
+                          title={item.visible !== false ? "Hide object" : "Show object"}
+                        >
+                          {item.visible !== false ? (
+                            <Eye className="w-3.5 h-3.5" />
+                          ) : (
+                            <EyeOff className="w-3.5 h-3.5" />
+                          )}
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="icon"
                           className="h-7 w-7 bg-card/80 text-destructive hover:text-destructive"
                           onClick={() => removeFurniture(item.id)}
                           title="Remove object"
@@ -367,13 +400,15 @@ const SidePanel = ({ planner }: SidePanelProps) => {
                 {wallObjects.map((item) => (
                   <div
                     key={item.id}
-                    className="rounded-lg border border-border/60 bg-muted/20 px-2.5 py-2"
+                    className={`rounded-lg border border-border/60 bg-muted/20 px-2.5 py-2 transition-opacity ${
+                      item.visible !== false ? "" : "opacity-70"
+                    }`}
                   >
                     <div className="flex items-center justify-between gap-2">
                       <div>
                         <p className="text-xs font-medium text-foreground">{wallObjectDisplayNames[item.id]}</p>
                         <p className="text-[11px] text-muted-foreground">
-                          {item.wallId} wall · {item.bottom.toFixed(2)}m from floor
+                          {item.wallId} wall · {formatDimensionValue(item.bottom, settings.general.units)} from floor
                         </p>
                       </div>
                       <div className="flex items-center gap-1">
@@ -428,6 +463,19 @@ const SidePanel = ({ planner }: SidePanelProps) => {
                           title="Move down"
                         >
                           <ArrowDown className="w-3.5 h-3.5" />
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          className="h-7 w-7 bg-card/80"
+                          onClick={() => setWallObjectVisibility(item.id, item.visible === false)}
+                          title={item.visible !== false ? "Hide wall element" : "Show wall element"}
+                        >
+                          {item.visible !== false ? (
+                            <Eye className="w-3.5 h-3.5" />
+                          ) : (
+                            <EyeOff className="w-3.5 h-3.5" />
+                          )}
                         </Button>
                         <Button
                           variant="outline"

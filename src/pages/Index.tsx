@@ -1,5 +1,6 @@
-import { ChangeEvent, useRef, useState } from "react";
+import { ChangeEvent, useEffect, useRef, useState } from "react";
 import AboutModal from "@/components/AboutModal";
+import SettingsPanel from "@/components/SettingsPanel";
 import TopNav from "@/components/TopNav";
 import RoomPreview from "@/components/RoomPreview";
 import SidePanel from "@/components/SidePanel";
@@ -10,18 +11,25 @@ import {
   importProjectFromJson,
   saveProjectToLocalStorage,
 } from "@/features/room-planner/projectPersistence";
+import { ViewMode } from "@/features/room-planner/types";
 import { useRoomPlanner } from "@/features/room-planner/useRoomPlanner";
+import { useAppSettings } from "@/features/settings/useAppSettings";
 
 const Index = () => {
   const planner = useRoomPlanner();
+  const plannerState = planner.state;
+  const { setViewMode } = planner;
   const [isAboutOpen, setIsAboutOpen] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const importFileInputRef = useRef<HTMLInputElement>(null);
+  const { settings, updateSettings } = useAppSettings();
+  const lastAppliedStartupViewRef = useRef<ViewMode | null>(null);
 
   const handleImportProjectClick = () => {
     importFileInputRef.current?.click();
   };
   const handleSaveProject = () => {
-    if (saveProjectToLocalStorage(planner.state)) {
+    if (saveProjectToLocalStorage(plannerState)) {
       toast.message("Project saved");
       return;
     }
@@ -30,7 +38,7 @@ const Index = () => {
   };
 
   const handleExportProject = () => {
-    if (exportProjectAsJson(planner.state)) {
+    if (exportProjectAsJson(plannerState)) {
       toast.message("Project exported");
       return;
     }
@@ -60,13 +68,32 @@ const Index = () => {
     toast.success("Project imported");
   };
   const handleToggleViewMode = () => {
-    planner.setViewMode(planner.state.viewMode === "top" ? "perspective" : "top");
+    setViewMode(plannerState.viewMode === "top" ? "perspective" : "top");
   };
+
+  useEffect(() => {
+    if (lastAppliedStartupViewRef.current === settings.view.defaultStartupView) {
+      return;
+    }
+    if (plannerState.viewMode !== settings.view.defaultStartupView) {
+      setViewMode(settings.view.defaultStartupView);
+    }
+    lastAppliedStartupViewRef.current = settings.view.defaultStartupView;
+  }, [plannerState.viewMode, setViewMode, settings.view.defaultStartupView]);
+
+  useEffect(() => {
+    if (!settings.general.autoSave) {
+      return;
+    }
+
+    saveProjectToLocalStorage(plannerState);
+  }, [plannerState, settings.general.autoSave]);
   return (
     <div className="h-dvh min-h-screen flex flex-col bg-background">
       <TopNav
-        viewMode={planner.state.viewMode}
+        viewMode={plannerState.viewMode}
         onToggleViewMode={handleToggleViewMode}
+        onOpenSettings={() => setIsSettingsOpen(true)}
         onBack={planner.undo}
         onForward={planner.redo}
         onSaveProject={handleSaveProject}
@@ -77,8 +104,8 @@ const Index = () => {
         canGoForward={planner.canRedo}
       />
       <div className="flex-1 min-h-0 min-w-0 flex flex-col lg:flex-row overflow-y-auto lg:overflow-hidden">
-        <RoomPreview planner={planner} />
-        <SidePanel planner={planner} />
+        <RoomPreview planner={planner} settings={settings} />
+        <SidePanel planner={planner} settings={settings} />
       </div>
       <input
         ref={importFileInputRef}
@@ -88,6 +115,12 @@ const Index = () => {
         onChange={handleProjectFileChange}
       />
       <AboutModal open={isAboutOpen} onOpenChange={setIsAboutOpen} />
+      <SettingsPanel
+        open={isSettingsOpen}
+        onOpenChange={setIsSettingsOpen}
+        settings={settings}
+        onSettingsChange={updateSettings}
+      />
     </div>
   );
 };

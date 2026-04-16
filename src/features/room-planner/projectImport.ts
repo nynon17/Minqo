@@ -133,6 +133,34 @@ function toFiniteNumber(value: unknown): number | undefined {
 
   return undefined;
 }
+
+function toBoolean(value: unknown): boolean | undefined {
+  if (typeof value === "boolean") {
+    return value;
+  }
+
+  if (typeof value === "number") {
+    if (value === 1) {
+      return true;
+    }
+    if (value === 0) {
+      return false;
+    }
+    return undefined;
+  }
+
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (["true", "yes", "1", "on"].includes(normalized)) {
+      return true;
+    }
+    if (["false", "no", "0", "off"].includes(normalized)) {
+      return false;
+    }
+  }
+
+  return undefined;
+}
 function normalizeWallObjectType(value: unknown): WallObjectType | undefined {
   const normalized = normalizeText(value)?.toLowerCase();
   if (!normalized) {
@@ -210,6 +238,20 @@ function getFirstArray(record: LooseRecord | undefined, keys: string[]): unknown
   }
 
   return undefined;
+}
+
+function normalizeVisibility(record: LooseRecord): boolean {
+  const visible = toBoolean(getFirstDefined(record, ["visible", "isVisible"]));
+  if (visible !== undefined) {
+    return visible;
+  }
+
+  const hidden = toBoolean(getFirstDefined(record, ["hidden", "isHidden"]));
+  if (hidden !== undefined) {
+    return !hidden;
+  }
+
+  return true;
 }
 
 function createFurnitureId(type: FurnitureType, index: number): string {
@@ -351,6 +393,7 @@ function normalizeFurnitureItem(item: unknown, index: number): FurnitureItem | n
       preset.color,
     position,
     rotationY: normalizeRotationY(record),
+    visible: normalizeVisibility(record),
   };
 }
 
@@ -461,6 +504,7 @@ function normalizeWallObjectItem(item: unknown, index: number): WallObjectItem |
       toColor(record.material) ??
       preset.color,
     metadata,
+    visible: normalizeVisibility(record),
   };
 }
 
@@ -760,7 +804,8 @@ export function validateNormalizedProject(project: RoomPlannerState): Validation
       item.color.trim() !== "" &&
       item.size.every((value) => Number.isFinite(value) && value > 0) &&
       item.position.every((value) => Number.isFinite(value)) &&
-      (item.rotationY === undefined || Number.isFinite(item.rotationY))
+      (item.rotationY === undefined || Number.isFinite(item.rotationY)) &&
+      typeof item.visible === "boolean"
     );
   });
   const wallObjectsValid = project.wallObjects.every((item) => {
@@ -782,7 +827,8 @@ export function validateNormalizedProject(project: RoomPlannerState): Validation
       Number.isFinite(item.offsetX) &&
       Number.isFinite(item.bottom) &&
       typeof item.color === "string" &&
-      item.color.trim() !== ""
+      item.color.trim() !== "" &&
+      typeof item.visible === "boolean"
     );
   });
 

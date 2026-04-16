@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { DoubleSide, Plane, Vector3 } from "three";
 import { Dimensions, FurnitureItem, RoomColors, SurfaceSelection, WallId } from "./types";
 import { applyAxisSnap, getFloorSnapTargets } from "./objectSnapping";
+import { getObjectBounds } from "./objectMeasurements";
 import { SURFACE_COLOR_PRESETS, WALL_LABELS } from "./wallColors";
 
 type RoomShellProps = {
@@ -32,6 +33,9 @@ type FurnitureLayerProps = {
   onMoveItem: (id: string, position: [number, number, number]) => void;
   onDragStateChange?: (isDragging: boolean) => void;
   onItemPointerDown?: () => void;
+  snapEnabled: boolean;
+  centerSnapEnabled: boolean;
+  collisionPreventionEnabled: boolean;
 };
 
 type FurnitureObjectProps = {
@@ -306,6 +310,9 @@ export function FurnitureLayer({
   onMoveItem,
   onDragStateChange,
   onItemPointerDown,
+  snapEnabled,
+  centerSnapEnabled,
+  collisionPreventionEnabled,
 }: FurnitureLayerProps) {
   const draggingItemIdRef = useRef<string | null>(null);
   const activePointerIdRef = useRef<number | null>(null);
@@ -373,8 +380,13 @@ export function FurnitureLayer({
     const rawX = dragIntersectionRef.current.x + dragOffsetRef.current.x;
     const rawZ = dragIntersectionRef.current.z + dragOffsetRef.current.z;
     const snapTargets = getFloorSnapTargets();
-    const snappedX = applyAxisSnap(rawX, snapTargets.x);
-    const snappedZ = applyAxisSnap(rawZ, snapTargets.z);
+    const shouldApplyCenterSnap = snapEnabled && centerSnapEnabled;
+    const snappedX = shouldApplyCenterSnap
+      ? applyAxisSnap(rawX, snapTargets.x)
+      : { value: rawX, snapped: false };
+    const snappedZ = shouldApplyCenterSnap
+      ? applyAxisSnap(rawZ, snapTargets.z)
+      : { value: rawZ, snapped: false };
 
     setSnappedAxes((current) =>
       current.x === snappedX.snapped && current.z === snappedZ.snapped
@@ -382,7 +394,26 @@ export function FurnitureLayer({
         : { x: snappedX.snapped, z: snappedZ.snapped },
     );
 
-    onMoveItem(item.id, [snappedX.value, dragHeightRef.current, snappedZ.value]);
+    const nextPosition: [number, number, number] = [snappedX.value, dragHeightRef.current, snappedZ.value];
+    if (collisionPreventionEnabled) {
+      const nextBounds = getObjectBounds({ ...item, position: nextPosition });
+      const hasCollision = items.some((other) => {
+        if (other.id === item.id) {
+          return false;
+        }
+
+        const otherBounds = getObjectBounds(other);
+        const overlapsX = nextBounds.minX < otherBounds.maxX && nextBounds.maxX > otherBounds.minX;
+        const overlapsY = nextBounds.minY < otherBounds.maxY && nextBounds.maxY > otherBounds.minY;
+        const overlapsZ = nextBounds.minZ < otherBounds.maxZ && nextBounds.maxZ > otherBounds.minZ;
+        return overlapsX && overlapsY && overlapsZ;
+      });
+      if (hasCollision) {
+        return;
+      }
+    }
+
+    onMoveItem(item.id, nextPosition);
   };
 
   const handlePointerUp = (event: ThreeEvent<PointerEvent>, item: FurnitureItem) => {

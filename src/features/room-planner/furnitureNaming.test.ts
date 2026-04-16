@@ -10,6 +10,7 @@ function createFurnitureItem(id: string, type: FurnitureType): FurnitureItem {
     color: "#000000",
     position: [0, 0.5, 0],
     rotationY: 0,
+    visible: true,
   };
 }
 

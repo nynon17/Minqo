@@ -3,14 +3,19 @@ import { ViewMode, WallId } from "./types";
 
 const CORNER_THRESHOLD = 0.34;
 const EPSILON = 1e-5;
+const OVERHEAD_RATIO_THRESHOLD = 1.45;
 
 export function getHiddenWalls(cameraPosition: Vector3, viewMode: ViewMode): WallId[] {
-  if (viewMode === "top") {
-    return [];
-  }
 
   const horizontalLength = Math.hypot(cameraPosition.x, cameraPosition.z);
   if (horizontalLength < EPSILON) {
+    return [];
+  }
+  const cameraHeightRatio = Math.abs(cameraPosition.y) / horizontalLength;
+  if (viewMode === "top" && cameraHeightRatio >= OVERHEAD_RATIO_THRESHOLD * 0.5) {
+    return [];
+  }
+  if (cameraHeightRatio >= OVERHEAD_RATIO_THRESHOLD) {
     return [];
   }
 

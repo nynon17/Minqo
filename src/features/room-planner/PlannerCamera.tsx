@@ -1,7 +1,7 @@
 import { OrbitControls } from "@react-three/drei";
 import { useFrame, useThree } from "@react-three/fiber";
-import { useEffect, useRef } from "react";
-import { Vector3 } from "three";
+import { useLayoutEffect, useRef, useState } from "react";
+import { Camera, Vector3 } from "three";
 import { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 import { Dimensions, ViewMode, WallId } from "./types";
 import { getHiddenWalls } from "./useAutoHideWalls";
@@ -11,10 +11,28 @@ type PlannerCameraProps = {
   viewMode: ViewMode;
   onHiddenWallsChange: (walls: WallId[]) => void;
   controlsEnabled: boolean;
+  smoothTransitions: boolean;
+  autoHideWalls: boolean;
 };
 
 function sameWalls(a: WallId[], b: WallId[]) {
   return a.length === b.length && a.every((value, index) => value === b[index]);
+}
+const CAMERA_TRANSITION_DURATION_MS = 420;
+const MIN_POLAR_ANGLE = 0.001;
+const MAX_POLAR_ANGLE = Math.PI - 0.001;
+const DEFAULT_CAMERA_ZOOM = 1;
+
+function clamp01(value: number) {
+  return Math.max(0, Math.min(1, value));
+}
+
+function easeInOutCubic(value: number) {
+  return value < 0.5 ? 4 * value * value * value : 1 - Math.pow(-2 * value + 2, 3) / 2;
+}
+
+function lerpNumber(start: number, end: number, t: number) {
+  return start + (end - start) * t;
 }
 
 function getPreset(room: Dimensions, viewMode: ViewMode) {
@@ -39,6 +57,40 @@ function getPreset(room: Dimensions, viewMode: ViewMode) {
   return {
     position: new Vector3(orbitDistance, room.height * 0.95, orbitDistance),
     target,
+    zoom: DEFAULT_CAMERA_ZOOM,
+  };
+}
+
+function flushControlMotion(controls: OrbitControlsImpl | null) {
+  if (!controls) {
+    return;
+  }
+
+  const previousDamping = controls.enableDamping;
+  controls.enableDamping = false;
+  controls.update();
+  controls.enableDamping = previousDamping;
+}
+
+function applyCameraState(camera: Camera, position: Vector3, target: Vector3, zoom: number) {
+  camera.position.copy(position);
+
+  if ("zoom" in camera && typeof camera.zoom === "number") {
+    const clampedZoom = Number.isFinite(zoom) ? zoom : camera.zoom;
+    if (camera.zoom !== clampedZoom) {
+      camera.zoom = clampedZoom;
+      camera.updateProjectionMatrix();
+    }
+  }
+
+  camera.lookAt(target);
+}
+
+function getPresetWithZoom(room: Dimensions, viewMode: ViewMode) {
+  const preset = getPreset(room, viewMode);
+  return {
+    ...preset,
+    zoom: DEFAULT_CAMERA_ZOOM,
   };
 }
 
@@ -47,63 +99,129 @@ export function PlannerCamera({
   viewMode,
   onHiddenWallsChange,
   controlsEnabled,
+  smoothTransitions,
+  autoHideWalls,
 }: PlannerCameraProps) {
   const { camera } = useThree();
   const controlsRef = useRef<OrbitControlsImpl | null>(null);
-  const desiredPositionRef = useRef(new Vector3());
-  const desiredTargetRef = useRef(new Vector3());
-  const isTransitioningRef = useRef(true);
+  const transitionFromPositionRef = useRef(new Vector3());
+  const transitionToPositionRef = useRef(new Vector3());
+  const transitionFromTargetRef = useRef(new Vector3());
+  const transitionToTargetRef = useRef(new Vector3());
+  const currentTargetRef = useRef(new Vector3());
+  const transitionFromZoomRef = useRef(DEFAULT_CAMERA_ZOOM);
+  const transitionToZoomRef = useRef(DEFAULT_CAMERA_ZOOM);
+  const transitionStartMsRef = useRef(0);
+  const isTransitioningRef = useRef(false);
   const initializedRef = useRef(false);
   const lastHiddenWallsRef = useRef<WallId[]>([]);
+  const lastViewModeRef = useRef<ViewMode>(viewMode);
+  const [isTransitioning, setIsTransitioning] = useState(false);
 
-  useEffect(() => {
-    const preset = getPreset(room, viewMode);
-    desiredPositionRef.current.copy(preset.position);
-    desiredTargetRef.current.copy(preset.target);
+  const setTransitioning = (value: boolean) => {
+    if (isTransitioningRef.current === value) {
+      return;
+    }
+
+    isTransitioningRef.current = value;
+    setIsTransitioning(value);
+  };
+
+  useLayoutEffect(() => {
+    const preset = getPresetWithZoom(room, viewMode);
+    const controls = controlsRef.current;
+    const nowMs = performance.now();
+    flushControlMotion(controls);
 
     if (!initializedRef.current) {
-      camera.position.copy(preset.position);
-
-      if (controlsRef.current) {
-        controlsRef.current.target.copy(preset.target);
-        controlsRef.current.update();
-      } else {
-        camera.lookAt(preset.target);
+      camera.up.set(0, 1, 0);
+      applyCameraState(camera, preset.position, preset.target, preset.zoom);
+      if (controls) {
+        controls.target.copy(preset.target);
       }
+      currentTargetRef.current.copy(preset.target);
 
       initializedRef.current = true;
+      lastViewModeRef.current = viewMode;
+      setTransitioning(false);
+      return;
     }
 
-    isTransitioningRef.current = true;
-  }, [camera, room, viewMode]);
+    if (!smoothTransitions) {
+      applyCameraState(camera, preset.position, preset.target, preset.zoom);
+      if (controls) {
+        controls.target.copy(preset.target);
+      }
+      currentTargetRef.current.copy(preset.target);
+      lastViewModeRef.current = viewMode;
+      setTransitioning(false);
+      return;
+    }
+
+    transitionFromPositionRef.current.copy(camera.position);
+    transitionToPositionRef.current.copy(preset.position);
+    transitionFromTargetRef.current.copy(controls?.target ?? currentTargetRef.current);
+    transitionToTargetRef.current.copy(preset.target);
+    transitionFromZoomRef.current =
+      "zoom" in camera && typeof camera.zoom === "number" ? camera.zoom : DEFAULT_CAMERA_ZOOM;
+    transitionToZoomRef.current = preset.zoom;
+    transitionStartMsRef.current = nowMs;
+    lastViewModeRef.current = viewMode;
+    setTransitioning(true);
+  }, [camera, room, smoothTransitions, viewMode]);
 
   useFrame(() => {
+    const controls = controlsRef.current;
+    camera.up.set(0, 1, 0);
+
     if (isTransitioningRef.current) {
-      camera.position.lerp(desiredPositionRef.current, 0.16);
+      const elapsedMs = performance.now() - transitionStartMsRef.current;
+      const progress = clamp01(elapsedMs / CAMERA_TRANSITION_DURATION_MS);
+      const easedProgress = easeInOutCubic(progress);
 
-      if (controlsRef.current) {
-        controlsRef.current.target.lerp(desiredTargetRef.current, 0.16);
-        controlsRef.current.update();
+      camera.position.lerpVectors(
+        transitionFromPositionRef.current,
+        transitionToPositionRef.current,
+        easedProgress,
+      );
+      currentTargetRef.current.lerpVectors(
+        transitionFromTargetRef.current,
+        transitionToTargetRef.current,
+        easedProgress,
+      );
+      const nextZoom = lerpNumber(
+        transitionFromZoomRef.current,
+        transitionToZoomRef.current,
+        easedProgress,
+      );
 
-        const reachedPosition =
-          camera.position.distanceToSquared(desiredPositionRef.current) < 0.0004;
-        const reachedTarget =
-          controlsRef.current.target.distanceToSquared(desiredTargetRef.current) < 0.0004;
-
-        if (reachedPosition && reachedTarget) {
-          camera.position.copy(desiredPositionRef.current);
-          controlsRef.current.target.copy(desiredTargetRef.current);
-          controlsRef.current.update();
-          isTransitioningRef.current = false;
-        }
-      } else {
-        camera.lookAt(desiredTargetRef.current);
+      applyCameraState(camera, camera.position, currentTargetRef.current, nextZoom);
+      if (controls) {
+        controls.target.copy(currentTargetRef.current);
       }
-    } else if (controlsRef.current) {
-      controlsRef.current.update();
+
+      if (progress >= 1) {
+        applyCameraState(
+          camera,
+          transitionToPositionRef.current,
+          transitionToTargetRef.current,
+          transitionToZoomRef.current,
+        );
+
+        if (controls) {
+          controls.target.copy(transitionToTargetRef.current);
+          controls.update();
+        }
+
+        currentTargetRef.current.copy(transitionToTargetRef.current);
+        setTransitioning(false);
+      }
+    } else if (controls) {
+      controls.update();
+      currentTargetRef.current.copy(controls.target);
     }
 
-    const hiddenWalls = getHiddenWalls(camera.position, viewMode);
+    const hiddenWalls = autoHideWalls ? getHiddenWalls(camera.position, viewMode) : [];
     if (!sameWalls(lastHiddenWallsRef.current, hiddenWalls)) {
       lastHiddenWallsRef.current = hiddenWalls;
       onHiddenWallsChange(hiddenWalls);
@@ -112,21 +230,29 @@ export function PlannerCamera({
 
   const allowOrbitRotation = viewMode === "perspective";
   const isTopView = viewMode === "top";
+  const hasPendingViewModeChange = lastViewModeRef.current !== viewMode;
+  const controlsLockedForTransition = isTransitioning || hasPendingViewModeChange;
+  const minPolarAngle =
+    viewMode === "perspective" && !controlsLockedForTransition ? 0.2 : MIN_POLAR_ANGLE;
+  const maxPolarAngle =
+    viewMode === "perspective" && !controlsLockedForTransition
+      ? Math.PI / 2.02
+      : MAX_POLAR_ANGLE;
 
   return (
     <OrbitControls
       ref={controlsRef}
       makeDefault
-      enabled={controlsEnabled}
-      enableDamping
+      enabled={controlsEnabled && !controlsLockedForTransition}
+      enableDamping={!controlsLockedForTransition}
       dampingFactor={0.12}
-      enableRotate={allowOrbitRotation}
-      enablePan={!isTopView}
+      enableRotate={allowOrbitRotation && !controlsLockedForTransition}
+      enablePan={!isTopView && !controlsLockedForTransition}
       enableZoom
       minDistance={2.5}
       maxDistance={35}
-      minPolarAngle={isTopView ? 0.001 : 0.2}
-      maxPolarAngle={isTopView ? 0.001 : Math.PI / 2.02}
+      minPolarAngle={minPolarAngle}
+      maxPolarAngle={maxPolarAngle}
     />
   );
 }

@@ -143,6 +143,7 @@ function sanitizeImportedState(importedState: RoomPlannerState): RoomPlannerStat
         color: typeof item.color === "string" && item.color.trim() !== "" ? item.color : preset.color,
         position,
         rotationY: Number.isFinite(item.rotationY) ? item.rotationY : 0,
+        visible: item.visible !== false,
       });
     })
     .filter((item): item is FurnitureItem => item !== null);
@@ -169,6 +170,7 @@ function sanitizeImportedState(importedState: RoomPlannerState): RoomPlannerStat
         bottom: Number.isFinite(item.bottom) ? item.bottom : preset.bottom,
         color: typeof item.color === "string" && item.color.trim() !== "" ? item.color : preset.color,
         metadata: item.metadata,
+        visible: item.visible !== false,
       });
     })
     .filter((item): item is WallObjectItem => item !== null);
@@ -346,6 +348,34 @@ export function useRoomPlanner(): RoomPlannerController {
     });
   };
 
+  const setFurnitureVisibility: RoomPlannerController["setFurnitureVisibility"] = (id, visible) => {
+    applyStateChange((previous) => {
+      let changed = false;
+
+      const nextFurniture = previous.furniture.map((item) => {
+        if (item.id !== id) {
+          return item;
+        }
+
+        if (item.visible === visible) {
+          return item;
+        }
+
+        changed = true;
+        return { ...item, visible };
+      });
+
+      if (!changed) {
+        return previous;
+      }
+
+      return {
+        ...previous,
+        furniture: nextFurniture,
+      };
+    });
+  };
+
   const removeFurniture: RoomPlannerController["removeFurniture"] = (id) => {
     applyStateChange((previous) => {
       const nextFurniture = previous.furniture.filter((item) => item.id !== id);
@@ -375,6 +405,7 @@ export function useRoomPlanner(): RoomPlannerController {
         color: preset.color,
         position: [(column - 1) * 1.05, preset.size[1] / 2, (row - 1) * 0.95],
         rotationY: 0,
+        visible: true,
       };
 
       const clamped = clampFurnitureToRoom(previous.room, tentative);
@@ -419,6 +450,7 @@ export function useRoomPlanner(): RoomPlannerController {
         offsetX,
         bottom: preset.bottom,
         color: preset.color,
+        visible: true,
       });
 
       return {
@@ -456,6 +488,34 @@ export function useRoomPlanner(): RoomPlannerController {
 
         changed = true;
         return clamped;
+      });
+
+      if (!changed) {
+        return previous;
+      }
+
+      return {
+        ...previous,
+        wallObjects: nextWallObjects,
+      };
+    });
+  };
+
+  const setWallObjectVisibility: RoomPlannerController["setWallObjectVisibility"] = (id, visible) => {
+    applyStateChange((previous) => {
+      let changed = false;
+
+      const nextWallObjects = previous.wallObjects.map((item) => {
+        if (item.id !== id) {
+          return item;
+        }
+
+        if (item.visible === visible) {
+          return item;
+        }
+
+        changed = true;
+        return { ...item, visible };
       });
 
       if (!changed) {
@@ -513,11 +573,13 @@ export function useRoomPlanner(): RoomPlannerController {
     setViewMode,
     setHiddenWalls,
     setFurniturePosition,
+    setFurnitureVisibility,
     removeFurniture,
     addFurniture,
     clearFurniture,
     addWallObject,
     setWallObjectPlacement,
+    setWallObjectVisibility,
     removeWallObject,
     clearWallObjects,
     applyImportedProject,

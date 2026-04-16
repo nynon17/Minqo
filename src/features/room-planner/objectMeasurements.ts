@@ -1,3 +1,4 @@
+import { MeasureFrom } from "@/features/settings/types";
 import { Dimensions, FurnitureItem, WallObjectItem } from "./types";
 import { getWallSpan } from "./wallObjectPlacement";
 
@@ -54,12 +55,20 @@ export function getObjectBounds(item: FurnitureItem): ObjectBounds {
   };
 }
 
-export function getFloorObjectMeasurements(room: Dimensions, item: FurnitureItem): ObjectMeasurement[] {
+export function getFloorObjectMeasurements(
+  room: Dimensions,
+  item: FurnitureItem,
+  measureFrom: MeasureFrom,
+): ObjectMeasurement[] {
   const bounds = getObjectBounds(item);
-  const leftDistance = bounds.minX + room.width / 2;
-  const rightDistance = room.width / 2 - bounds.maxX;
-  const frontDistance = bounds.minZ + room.length / 2;
-  const backDistance = room.length / 2 - bounds.maxZ;
+  const leftDistance =
+    measureFrom === "object-center" ? item.position[0] + room.width / 2 : bounds.minX + room.width / 2;
+  const rightDistance =
+    measureFrom === "object-center" ? room.width / 2 - item.position[0] : room.width / 2 - bounds.maxX;
+  const frontDistance =
+    measureFrom === "object-center" ? item.position[2] + room.length / 2 : bounds.minZ + room.length / 2;
+  const backDistance =
+    measureFrom === "object-center" ? room.length / 2 - item.position[2] : room.length / 2 - bounds.maxZ;
 
   return [
     { label: "Left wall", distanceMeters: clampDistance(leftDistance) },
@@ -69,12 +78,20 @@ export function getFloorObjectMeasurements(room: Dimensions, item: FurnitureItem
   ];
 }
 
-export function getWallObjectMeasurements(room: Dimensions, item: WallObjectItem): ObjectMeasurement[] {
+export function getWallObjectMeasurements(
+  room: Dimensions,
+  item: WallObjectItem,
+  measureFrom: MeasureFrom,
+): ObjectMeasurement[] {
   const span = getWallSpan(room, item.wallId);
-  const leftDistance = span / 2 + item.offsetX - item.width / 2;
-  const rightDistance = span / 2 - item.offsetX - item.width / 2;
-  const floorDistance = item.bottom;
-  const ceilingDistance = room.height - (item.bottom + item.height);
+  const centerY = item.bottom + item.height / 2;
+  const leftDistance =
+    measureFrom === "object-center" ? span / 2 + item.offsetX : span / 2 + item.offsetX - item.width / 2;
+  const rightDistance =
+    measureFrom === "object-center" ? span / 2 - item.offsetX : span / 2 - item.offsetX - item.width / 2;
+  const floorDistance = measureFrom === "object-center" ? centerY : item.bottom;
+  const ceilingDistance =
+    measureFrom === "object-center" ? room.height - centerY : room.height - (item.bottom + item.height);
 
   return [
     { label: "Floor", distanceMeters: clampDistance(floorDistance) },
@@ -82,12 +99,4 @@ export function getWallObjectMeasurements(room: Dimensions, item: WallObjectItem
     { label: "Left edge", distanceMeters: clampDistance(leftDistance) },
     { label: "Right edge", distanceMeters: clampDistance(rightDistance) },
   ];
-}
-
-export function formatDistanceCentimeters(distanceMeters: number): string {
-  const centimeters = clampDistance(distanceMeters) * 100;
-  const rounded = Math.round(centimeters * 10) / 10;
-  const isWhole = Math.abs(rounded - Math.round(rounded)) < ROUNDING_EPSILON;
-
-  return isWhole ? `${Math.round(rounded)} cm` : `${rounded.toFixed(1)} cm`;
 }

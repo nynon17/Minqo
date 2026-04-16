@@ -22,6 +22,7 @@ export interface FurnitureItem {
   size: [number, number, number];
   color: string;
   rotationY?: number;
+  visible: boolean;
 }
 export type WallObjectMetadata = {
   style?: string;
@@ -39,6 +40,7 @@ export interface WallObjectItem {
   bottom: number;
   color: string;
   metadata?: WallObjectMetadata;
+  visible: boolean;
 }
 
 export interface RoomPlannerState {
@@ -63,6 +65,7 @@ export interface RoomPlannerController {
   setViewMode: (mode: ViewMode) => void;
   setHiddenWalls: (walls: WallId[]) => void;
   setFurniturePosition: (id: string, position: [number, number, number]) => void;
+  setFurnitureVisibility: (id: string, visible: boolean) => void;
   removeFurniture: (id: string) => void;
   addFurniture: (type: FurnitureType) => void;
   clearFurniture: () => void;
@@ -71,6 +74,7 @@ export interface RoomPlannerController {
     id: string,
     updates: Partial<Pick<WallObjectItem, "wallId" | "offsetX" | "bottom">>,
   ) => void;
+  setWallObjectVisibility: (id: string, visible: boolean) => void;
   removeWallObject: (id: string) => void;
   clearWallObjects: () => void;
   applyImportedProject: (state: RoomPlannerState) => void;

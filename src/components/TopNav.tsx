@@ -1,4 +1,4 @@
-import { Download, Eye, HelpCircle, Home, Redo2, Save, Settings, Undo2, Upload } from "lucide-react";
+import { Download, Eye, HelpCircle, Redo2, Save, Settings, Undo2, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { ViewMode } from "@/features/room-planner/types";
@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 type TopNavProps = {
   viewMode: ViewMode;
   onToggleViewMode: () => void;
+  onOpenSettings: () => void;
   onBack: () => void;
   onForward: () => void;
   onSaveProject: () => void;
@@ -20,6 +21,7 @@ type TopNavProps = {
 const TopNav = ({
   viewMode,
   onToggleViewMode,
+  onOpenSettings,
   onBack,
   onForward,
   onSaveProject,
@@ -35,10 +37,7 @@ const TopNav = ({
   return (
     <header className="h-14 border-b bg-card flex items-center justify-between px-3 sm:px-6 shadow-soft">
       <div className="flex items-center gap-3">
-        <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
-          <Home className="w-4 h-4 text-primary-foreground" />
-        </div>
-        <span className="font-display text-base sm:text-lg font-semibold tracking-tight text-foreground">
+        <span className="font-display text-base sm:text-2xl font-semibold tracking-tight text-foreground">
           Minqo
         </span>
         <span className="hidden md:inline text-xs text-muted-foreground ml-1 font-medium tracking-wide uppercase">
@@ -136,7 +135,14 @@ const TopNav = ({
         >
           <HelpCircle className="w-4 h-4" />
         </Button>
-        <Button variant="ghost" size="icon" className="hidden md:inline-flex text-muted-foreground hover:text-foreground">
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={onOpenSettings}
+          aria-label="Open settings"
+          title="Settings"
+          className="hidden md:inline-flex text-muted-foreground hover:text-foreground"
+        >
           <Settings className="w-4 h-4" />
         </Button>
       </div>

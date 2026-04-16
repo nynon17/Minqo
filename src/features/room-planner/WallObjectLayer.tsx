@@ -23,6 +23,8 @@ type WallObjectLayerProps = {
   ) => void;
   onDragStateChange?: (isDragging: boolean) => void;
   onItemPointerDown?: () => void;
+  snapEnabled: boolean;
+  centerSnapEnabled: boolean;
 };
 
 type WallObjectMeshProps = {
@@ -266,6 +268,8 @@ export function WallObjectLayer({
   onMoveItem,
   onDragStateChange,
   onItemPointerDown,
+  snapEnabled,
+  centerSnapEnabled,
 }: WallObjectLayerProps) {
   const draggingItemIdRef = useRef<string | null>(null);
   const activePointerIdRef = useRef<number | null>(null);
@@ -389,8 +393,13 @@ export function WallObjectLayer({
     const rawOffsetX = target.localPlacement.offsetX + dragOffsetXRef.current;
     const rawBottom = target.localPlacement.bottom + dragOffsetBottomRef.current;
     const snapTargets = getWallObjectSnapTargets(room, item);
-    const snappedOffsetX = applyAxisSnap(rawOffsetX, snapTargets.offsetX);
-    const snappedBottom = applyAxisSnap(rawBottom, snapTargets.bottom);
+    const shouldApplyCenterSnap = snapEnabled && centerSnapEnabled;
+    const snappedOffsetX = shouldApplyCenterSnap
+      ? applyAxisSnap(rawOffsetX, snapTargets.offsetX)
+      : { value: rawOffsetX, snapped: false };
+    const snappedBottom = shouldApplyCenterSnap
+      ? applyAxisSnap(rawBottom, snapTargets.bottom)
+      : { value: rawBottom, snapped: false };
     const nextOffsetX = snappedOffsetX.value;
     const nextBottom = snappedBottom.value;
     setSnapState((current) =>

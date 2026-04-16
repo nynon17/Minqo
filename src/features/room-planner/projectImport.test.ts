@@ -28,6 +28,7 @@ describe("importProjectFromJsonText", () => {
               color: "#cccccc",
               position: [0.5, 0.7, -0.4],
               rotationY: 0.25,
+              visible: false,
             },
           ],
           wallObjects: [
@@ -41,6 +42,7 @@ describe("importProjectFromJsonText", () => {
               offsetX: 0.4,
               bottom: 1,
               color: "#c3d4df",
+              visible: true,
             },
           ],
         },
@@ -58,8 +60,10 @@ describe("importProjectFromJsonText", () => {
     expect(result.state.hiddenWalls).toEqual(["left"]);
     expect(result.state.furniture).toHaveLength(1);
     expect(result.state.furniture[0].type).toBe("lamp");
+    expect(result.state.furniture[0].visible).toBe(false);
     expect(result.state.wallObjects).toHaveLength(1);
     expect(result.state.wallObjects[0].wallId).toBe("back");
+    expect(result.state.wallObjects[0].visible).toBe(true);
   });
 
   it("normalizes compatible external aliases into Minqo schema", () => {
@@ -92,6 +96,7 @@ describe("importProjectFromJsonText", () => {
             thickness: 0.12,
             positionAlongWall: 0.4,
             heightFromFloor: 1.2,
+            hidden: true,
           },
         ],
       }),
@@ -110,10 +115,12 @@ describe("importProjectFromJsonText", () => {
     expect(result.state.furniture).toHaveLength(1);
     expect(result.state.furniture[0].type).toBe("sofa");
     expect(result.state.furniture[0].position[1]).toBe(0.5);
+    expect(result.state.furniture[0].visible).toBe(true);
     expect(result.state.wallObjects).toHaveLength(1);
     expect(result.state.wallObjects[0].type).toBe("window");
     expect(result.state.wallObjects[0].wallId).toBe("right");
     expect(result.state.wallObjects[0].bottom).toBe(1.2);
+    expect(result.state.wallObjects[0].visible).toBe(false);
   });
 
   it("returns partial import when unsupported furniture entries are skipped", () => {
@@ -139,6 +146,7 @@ describe("importProjectFromJsonText", () => {
     expect(result.state.furniture[0].type).toBe("chair");
     expect(result.state.furniture[0].position).toEqual([0, 0.425, 0]);
     expect(result.state.furniture[0].rotationY).toBe(0);
+    expect(result.state.furniture[0].visible).toBe(true);
   });
 
   it("fails for clearly unsupported project structures", () => {
